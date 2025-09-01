@@ -1,0 +1,285 @@
+{
+  description = "Happy Hare MMU development environment for NixOS Raspberry Pi";
+
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    flake-utils.url = "github:numtide/flake-utils";
+    
+    # Klipper and related tools
+    klipper = {
+      url = "github:Klipper3d/klipper";
+      flake = false;
+    };
+    
+    moonraker = {
+      url = "github:Arksine/moonraker";
+      flake = false;
+    };
+  };
+
+  outputs = { self, nixpkgs, flake-utils, klipper, moonraker }:
+    flake-utils.lib.eachDefaultSystem (system:
+      let
+        pkgs = nixpkgs.legacyPackages.${system};
+        
+        # Python environment for Happy Hare development
+        pythonEnv = pkgs.python3.withPackages (ps: with ps; [
+          # Core Python packages
+          pip
+          setuptools
+          wheel
+          
+          # Development tools
+          black
+          flake8
+          mypy
+          pylint
+          
+          # Klipper dependencies
+          cffi
+          pyserial
+          jinja2
+          
+          # Moonraker dependencies
+          tornado
+          tornado-cors
+          tornado-httpclient
+          tornado-websocket
+          tornado-json
+          
+          # Additional dependencies that might be needed
+          numpy
+          scipy
+          matplotlib
+          
+          # Testing
+          pytest
+          pytest-asyncio
+          pytest-cov
+        ]);
+        
+        # Development shell environment
+        devShell = pkgs.mkShell {
+          buildInputs = with pkgs; [
+            # Python environment
+            pythonEnv
+            
+            # Build tools
+            gcc
+            gnumake
+            cmake
+            pkg-config
+            
+            # Git and version control
+            git
+            git-lfs
+            
+            # Development tools
+            vim
+            nano
+            htop
+            tmux
+            
+            # Network tools
+            curl
+            wget
+            netcat
+            
+            # Serial communication (for flashing)
+            avrdude
+            stm32flash
+            dfu-util
+            
+            # ARM cross-compilation tools
+            gcc-arm-embedded
+            binutils-arm-embedded
+            
+            # Additional tools
+            jq
+            yq
+            tree
+            ripgrep
+            fd
+          ];
+          
+          # Environment variables
+          shellHook = ''
+            echo "🐰 Happy Hare Development Environment"
+            echo "=================================="
+            echo ""
+            echo "Available tools:"
+            echo "  - Python: $(python3 --version)"
+            echo "  - Git: $(git --version)"
+            echo "  - GCC: $(gcc --version | head -n1)"
+            echo "  - Make: $(make --version | head -n1)"
+            echo ""
+            echo "Klipper and Moonraker sources are available at:"
+            echo "  - Klipper: ${klipper}"
+            echo "  - Moonraker: ${moonraker}"
+            echo ""
+            echo "To start development:"
+            echo "  1. cd extras/mmu"
+            echo "  2. python3 -m pytest test/"
+            echo "  3. python3 mmu.py --help"
+            echo ""
+            echo "To flash firmware:"
+            echo "  1. make menuconfig"
+            echo "  2. make"
+            echo "  3. make flash"
+            echo ""
+          '';
+          
+          # Set up environment for Klipper development
+          KLIPPER_HOME = "${klipper}";
+          MOONRAKER_HOME = "${moonraker}";
+          PYTHONPATH = "${klipper}/klippy:${moonraker}/moonraker:$PYTHONPATH";
+        };
+        
+        # Klipper firmware build
+        klipperFirmware = pkgs.stdenv.mkDerivation {
+          name = "klipper-firmware";
+          src = klipper;
+          
+          nativeBuildInputs = with pkgs; [
+            gcc-arm-embedded
+            binutils-arm-embedded
+            gnumake
+            python3
+            python3Packages.pyserial
+            python3Packages.cffi
+          ];
+          
+          buildPhase = ''
+            cd klippy/chelper
+            make
+            cd ../..
+          '';
+          
+          installPhase = ''
+            mkdir -p $out
+            cp -r klippy $out/
+            cp -r lib $out/
+            cp -r scripts $out/
+            cp -r config $out/
+          '';
+        };
+        
+        # Happy Hare package
+        happyHare = pkgs.python3Packages.buildPythonPackage {
+          pname = "happy-hare";
+          version = "3.3.0";
+          src = ./.;
+          
+          propagatedBuildInputs = with pkgs.python3Packages; [
+            pyserial
+            cffi
+            jinja2
+          ];
+          
+          doCheck = false;
+          
+          installPhase = ''
+            mkdir -p $out/lib/python3.9/site-packages/happy_hare
+            cp -r extras/mmu $out/lib/python3.9/site-packages/happy_hare/
+            cp -r components $out/lib/python3.9/site-packages/happy_hare/
+          '';
+        };
+        
+      in {
+        # Development shell
+        devShells.default = devShell;
+        
+        # Packages
+        packages = {
+          inherit klipperFirmware happyHare;
+          default = happyHare;
+        };
+        
+        # Apps
+        apps = {
+          # Install Happy Hare
+          install = {
+            type = "app";
+            program = toString (pkgs.writeShellScript "install-happy-hare" ''
+              echo "Installing Happy Hare..."
+              cd ${toString ./.}
+              chmod +x install.sh
+              ./install.sh
+            '');
+          };
+          
+          # Flash firmware
+          flash = {
+            type = "app";
+            program = toString (pkgs.writeShellScript "flash-firmware" ''
+              echo "Flashing Klipper firmware..."
+              cd ${klipper}/out
+              if [ -f "klipper.bin" ]; then
+                echo "Found klipper.bin, ready to flash"
+                echo "Use: make flash FLASH_DEVICE=/dev/ttyACM0"
+              else
+                echo "Please build firmware first: make menuconfig && make"
+              fi
+            '');
+          };
+          
+          # Build firmware
+          build = {
+            type = "app";
+            program = toString (pkgs.writeShellScript "build-firmware" ''
+              echo "Building Klipper firmware..."
+              cd ${klipper}
+              make menuconfig
+              make
+            '');
+          };
+        };
+        
+        # NixOS module for system integration
+        nixosModules.happyHare = { config, lib, pkgs, ... }:
+          with lib;
+          let
+            cfg = config.services.happyHare;
+          in {
+            options.services.happyHare = {
+              enable = mkEnableOption "Happy Hare MMU service";
+              
+              klipperConfig = mkOption {
+                type = types.path;
+                description = "Path to Klipper configuration directory";
+                default = "/home/klipper/printer_data/config";
+              };
+              
+              klipperHome = mkOption {
+                type = types.path;
+                description = "Path to Klipper installation";
+                default = "/home/klipper/klipper";
+              };
+            };
+            
+            config = mkIf cfg.enable {
+              systemd.services.happy-hare = {
+                description = "Happy Hare MMU Service";
+                wantedBy = [ "multi-user.target" ];
+                after = [ "klipper.service" "moonraker.service" ];
+                
+                serviceConfig = {
+                  Type = "simple";
+                  User = "klipper";
+                  Group = "klipper";
+                  WorkingDirectory = "${self.packages.${system}.happyHare}";
+                  ExecStart = "${pkgs.python3}/bin/python3 -m happy_hare.mmu";
+                  Restart = "always";
+                  RestartSec = "10";
+                };
+                
+                environment = {
+                  KLIPPER_CONFIG_HOME = cfg.klipperConfig;
+                  KLIPPER_HOME = cfg.klipperHome;
+                };
+              };
+            };
+          };
+      }
+    );
+}
