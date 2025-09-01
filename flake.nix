@@ -61,6 +61,10 @@
             cmake
             pkg-config
             
+            # Core utilities
+            bash
+            coreutils
+            
             # Git and version control
             git
             
@@ -117,6 +121,7 @@
           KLIPPER_HOME = "${klipper}";
           MOONRAKER_HOME = "${moonraker}";
           PYTHONPATH = "${klipper}/klippy:${moonraker}/moonraker:$PYTHONPATH";
+          PATH = "${pkgs.bash}/bin:${pkgs.coreutils}/bin:$PATH";
         };
         
         # Klipper firmware build
@@ -197,11 +202,31 @@
             type = "app";
             program = toString (pkgs.writeShellScript "install-happy-hare" ''
               echo "Installing Happy Hare..."
-              cd ${toString ./.}
+              
+              # Create a temporary directory to work with
+              TEMP_DIR=$(mktemp -d)
+              echo "Working in temporary directory: $TEMP_DIR"
+              
+              # Copy the Happy Hare files to the temp directory
+              cp -r ${toString ./.}/* "$TEMP_DIR/"
+              cd "$TEMP_DIR"
+              
+              # Fix the shebang in install.sh to use the correct bash path
+              sed -i 's|#!/bin/bash|#!${pkgs.bash}/bin/bash|g' install.sh
               chmod +x install.sh
+              
+              # Set environment variables
               export KLIPPER_HOME="${klipper}"
               export MOONRAKER_HOME="${moonraker}"
+              export PATH="${pkgs.bash}/bin:${pkgs.coreutils}/bin:$PATH"
+              
+              # Run the installer
+              echo "Running Happy Hare installer..."
               ./install.sh
+              
+              # Clean up
+              echo "Cleaning up temporary files..."
+              rm -rf "$TEMP_DIR"
             '');
           };
           
@@ -210,6 +235,7 @@
             type = "app";
             program = toString (pkgs.writeShellScript "flash-firmware" ''
               echo "Flashing Klipper firmware..."
+              export PATH="${pkgs.bash}/bin:${pkgs.coreutils}/bin:${pkgs.gnumake}/bin:$PATH"
               cd ${klipper}/out
               if [ -f "klipper.bin" ]; then
                 echo "Found klipper.bin, ready to flash"
@@ -225,6 +251,7 @@
             type = "app";
             program = toString (pkgs.writeShellScript "build-firmware" ''
               echo "Building Klipper firmware..."
+              export PATH="${pkgs.bash}/bin:${pkgs.coreutils}/bin:${pkgs.gnumake}/bin:$PATH"
               cd ${klipper}
               make menuconfig
               make

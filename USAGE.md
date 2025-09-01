@@ -1,12 +1,21 @@
 # Happy Hare NixOS Flake - Usage Guide
 
-## 🐛 Issue Fixed
+## 🐛 Issues Fixed
 
+### 1. **Python Package Build Error**
 The original error was caused by trying to build Happy Hare as a Python package when it's actually a Klipper extension. The flake has been updated to:
 
 1. **Treat Happy Hare as a development environment** rather than a Python package
 2. **Use `stdenv.mkDerivation`** instead of `buildPythonPackage`
 3. **Provide proper file structure** for Klipper integration
+
+### 2. **NixOS Path Issues**
+Fixed NixOS-specific issues:
+
+1. **Bash path**: Updated scripts to use `${pkgs.bash}/bin/bash` instead of `/bin/bash`
+2. **Read-only filesystem**: Install app now works in a temporary directory
+3. **Missing coreutils**: Added `coreutils` and `bash` to buildInputs
+4. **PATH issues**: Set correct PATH with NixOS package locations
 
 ## 🚀 How to Use
 
