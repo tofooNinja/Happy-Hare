@@ -119,36 +119,7 @@
           PYTHONPATH = "${klipper}/klippy:${moonraker}/moonraker:$PYTHONPATH";
         };
         
-        # Klipper firmware build
-        klipperFirmware = pkgs.stdenv.mkDerivation {
-          name = "klipper-firmware";
-          src = klipper;
-          
-          nativeBuildInputs = with pkgs; [
-            # gcc-arm-embedded  # Commented out as it might not be available
-            # binutils-arm-embedded  # Commented out as it might not be available
-            gnumake
-            python3
-            python3Packages.pyserial
-            python3Packages.cffi
-          ];
-          
-          buildPhase = ''
-            cd klippy/chelper
-            make
-            cd ../..
-          '';
-          
-          installPhase = ''
-            mkdir -p $out
-            cp -r klippy $out/
-            cp -r lib $out/
-            cp -r scripts $out/
-            cp -r config $out/
-          '';
-        };
-        
-        # Happy Hare development package (not a Python package, but a development environment)
+        # Happy Hare development package
         happyHare = pkgs.stdenv.mkDerivation {
           pname = "happy-hare";
           version = "3.3.0";
@@ -186,7 +157,7 @@
         
         # Packages
         packages = {
-          inherit klipperFirmware happyHare;
+          inherit happyHare;
           default = happyHare;
         };
         
