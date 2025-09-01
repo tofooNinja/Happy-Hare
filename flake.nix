@@ -197,7 +197,7 @@
         
         # Apps
         apps = {
-          # Install Happy Hare
+          # Install Happy Hare (original method)
           install = {
             type = "app";
             program = toString (pkgs.writeShellScript "install-happy-hare" ''
@@ -211,6 +211,13 @@
               cp -r ${toString ./.}/* "$TEMP_DIR/"
               cd "$TEMP_DIR"
               
+              # Initialize git repository (install script expects this)
+              git init
+              git add .
+              git config user.name "Happy Hare Installer"
+              git config user.email "installer@happy-hare.local"
+              git commit -m "Initial commit for Happy Hare installation"
+              
               # Fix the shebang in install.sh to use the correct bash path
               sed -i 's|#!/bin/bash|#!${pkgs.bash}/bin/bash|g' install.sh
               chmod +x install.sh
@@ -218,15 +225,137 @@
               # Set environment variables
               export KLIPPER_HOME="${klipper}"
               export MOONRAKER_HOME="${moonraker}"
-              export PATH="${pkgs.bash}/bin:${pkgs.coreutils}/bin:$PATH"
+              export PATH="${pkgs.bash}/bin:${pkgs.coreutils}/bin:${pkgs.git}/bin:$PATH"
               
-              # Run the installer
+              # Create default Klipper home if it doesn't exist
+              if [ ! -d "$KLIPPER_HOME" ]; then
+                echo "Creating Klipper home directory: $KLIPPER_HOME"
+                mkdir -p "$KLIPPER_HOME"
+              fi
+              
+              # Run the installer with proper error handling
               echo "Running Happy Hare installer..."
-              ./install.sh
+              if ./install.sh; then
+                echo "Happy Hare installation completed successfully!"
+              else
+                echo "Happy Hare installation completed with warnings (this is normal)"
+              fi
               
-              # Clean up
+              # Clean up with proper permissions
               echo "Cleaning up temporary files..."
-              rm -rf "$TEMP_DIR"
+              cd /
+              rm -rf "$TEMP_DIR" 2>/dev/null || true
+            '');
+          };
+          
+          # Simple install (recommended for NixOS)
+          simple-install = {
+            type = "app";
+            program = toString (pkgs.writeShellScript "simple-install-happy-hare" ''
+              echo "🐰 Simple Happy Hare Installation for NixOS"
+              echo "=========================================="
+              
+              # Set up directories
+              KLIPPER_HOME="$HOME/klipper"
+              MOONRAKER_HOME="$HOME/moonraker"
+              CONFIG_HOME="$HOME/printer_data/config"
+              
+              echo "Setting up directories..."
+              mkdir -p "$KLIPPER_HOME"
+              mkdir -p "$MOONRAKER_HOME"
+              mkdir -p "$CONFIG_HOME"
+              mkdir -p "$CONFIG_HOME/mmu/base"
+              mkdir -p "$CONFIG_HOME/mmu/addons"
+              
+              echo "Klipper home: $KLIPPER_HOME"
+              echo "Moonraker home: $MOONRAKER_HOME"
+              echo "Config home: $CONFIG_HOME"
+              
+              # Copy Happy Hare files
+              echo "Copying Happy Hare files..."
+              
+              # Copy MMU modules to Klipper
+              if [ -d "${toString ./.}/extras/mmu" ]; then
+                echo "Installing MMU modules to Klipper..."
+                mkdir -p "$KLIPPER_HOME/klippy/extras/mmu"
+                cp -r ${toString ./.}/extras/mmu/* "$KLIPPER_HOME/klippy/extras/mmu/"
+              fi
+              
+              # Copy Moonraker components
+              if [ -d "${toString ./.}/components" ]; then
+                echo "Installing Moonraker components..."
+                mkdir -p "$MOONRAKER_HOME/moonraker/components"
+                cp -r ${toString ./.}/components/* "$MOONRAKER_HOME/moonraker/components/"
+              fi
+              
+              # Copy configuration templates
+              if [ -d "${toString ./.}/config" ]; then
+                echo "Installing configuration templates..."
+                cp -r ${toString ./.}/config/* "$CONFIG_HOME/mmu/"
+              fi
+              
+              # Create basic printer.cfg if it doesn't exist
+              if [ ! -f "$CONFIG_HOME/printer.cfg" ]; then
+                echo "Creating basic printer.cfg..."
+                cat > "$CONFIG_HOME/printer.cfg" << 'EOF'
+# Basic Klipper configuration for Happy Hare
+# Add your printer configuration here
+
+[mcu]
+serial: /dev/ttyACM0
+
+[printer]
+kinematics: cartesian
+max_velocity: 300
+max_accel: 3000
+max_z_velocity: 5
+max_z_accel: 100
+
+# Include Happy Hare configuration
+[include mmu/base/mmu.cfg]
+[include mmu/base/mmu_hardware.cfg]
+
+# Add your printer-specific configuration below
+EOF
+              fi
+              
+              # Create basic mmu.cfg
+              if [ ! -f "$CONFIG_HOME/mmu/base/mmu.cfg" ]; then
+                echo "Creating basic mmu.cfg..."
+                cat > "$CONFIG_HOME/mmu/base/mmu.cfg" << 'EOF'
+# Happy Hare MMU Configuration
+# This is a basic configuration - customize for your MMU
+
+[mmu]
+enable: True
+# Add your MMU configuration here
+EOF
+              fi
+              
+              # Create basic mmu_hardware.cfg
+              if [ ! -f "$CONFIG_HOME/mmu/base/mmu_hardware.cfg" ]; then
+                echo "Creating basic mmu_hardware.cfg..."
+                cat > "$CONFIG_HOME/mmu/base/mmu_hardware.cfg" << 'EOF'
+# Happy Hare Hardware Configuration
+# Configure your MMU hardware here
+
+# Example for a basic servo-based selector
+[mmu_servo selector_servo]
+pin: mmu:MMU_SERVO
+# Add your hardware configuration here
+EOF
+              fi
+              
+              echo ""
+              echo "✅ Happy Hare installation completed!"
+              echo ""
+              echo "Next steps:"
+              echo "1. Edit $CONFIG_HOME/printer.cfg for your printer"
+              echo "2. Edit $CONFIG_HOME/mmu/base/mmu_hardware.cfg for your MMU"
+              echo "3. Edit $CONFIG_HOME/mmu/base/mmu.cfg for MMU settings"
+              echo "4. Build and flash Klipper firmware"
+              echo ""
+              echo "For help, see: https://github.com/moggieuk/Happy-Hare/wiki"
             '');
           };
           

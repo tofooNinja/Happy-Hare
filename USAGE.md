@@ -57,14 +57,29 @@ nix develop
 
 ### 3. Install Happy Hare
 
+You have two installation options:
+
+#### Option A: Simple Install (Recommended for NixOS)
 ```bash
-# Run the installer
-nix run .#install
+# Simple installation that works reliably on NixOS
+nix run .#simple-install
 
 # This will:
-# - Set up Klipper integration
-# - Configure Moonraker
-# - Install configuration files
+# - Set up directories in your home folder
+# - Copy Happy Hare files to the right locations
+# - Create basic configuration files
+# - No complex scripts or git dependencies
+```
+
+#### Option B: Original Install Script
+```bash
+# Original installation method (may have issues on NixOS)
+nix run .#install
+
+# This runs the original install.sh script with fixes for:
+# - Git repository initialization
+# - NixOS path issues
+# - Permission handling
 ```
 
 ### 4. Build and Flash Firmware
