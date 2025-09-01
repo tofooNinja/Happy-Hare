@@ -164,25 +164,36 @@
           '';
         };
         
-        # Happy Hare package
-        happyHare = pkgs.python3Packages.buildPythonPackage {
+        # Happy Hare development package (not a Python package, but a development environment)
+        happyHare = pkgs.stdenv.mkDerivation {
           pname = "happy-hare";
           version = "3.3.0";
           src = ./.;
           
-          propagatedBuildInputs = with pkgs.python3Packages; [
-            pyserial
-            cffi
-            jinja2
+          nativeBuildInputs = with pkgs; [
+            makeWrapper
           ];
           
-          doCheck = false;
-          
           installPhase = ''
-            mkdir -p $out/lib/python3.9/site-packages/happy_hare
-            cp -r extras/mmu $out/lib/python3.9/site-packages/happy_hare/
-            cp -r components $out/lib/python3.9/site-packages/happy_hare/
+            mkdir -p $out
+            cp -r extras $out/
+            cp -r components $out/
+            cp -r config $out/
+            cp install.sh $out/
+            chmod +x $out/install.sh
+            
+            # Create wrapper script for easy access
+            makeWrapper ${pythonEnv}/bin/python3 $out/bin/happy-hare-dev \
+              --add-flags "-c 'import sys; sys.path.insert(0, \"$out/extras\"); import mmu.mmu; print(\"Happy Hare development environment ready\")'" \
+              --set PYTHONPATH "$out/extras:$out/components:$PYTHONPATH"
           '';
+          
+          meta = with pkgs.lib; {
+            description = "Happy Hare MMU development environment";
+            homepage = "https://github.com/moggieuk/Happy-Hare";
+            license = licenses.gpl3;
+            platforms = platforms.all;
+          };
         };
         
       in {
@@ -204,6 +215,8 @@
               echo "Installing Happy Hare..."
               cd ${toString ./.}
               chmod +x install.sh
+              export KLIPPER_HOME="${klipper}"
+              export MOONRAKER_HOME="${moonraker}"
               ./install.sh
             '');
           };
@@ -268,7 +281,7 @@
                   User = "klipper";
                   Group = "klipper";
                   WorkingDirectory = "${self.packages.${system}.happyHare}";
-                  ExecStart = "${pkgs.python3}/bin/python3 -m happy_hare.mmu";
+                  ExecStart = "${pkgs.python3}/bin/python3 ${self.packages.${system}.happyHare}/extras/mmu/mmu.py";
                   Restart = "always";
                   RestartSec = "10";
                 };
